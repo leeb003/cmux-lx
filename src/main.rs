@@ -463,6 +463,20 @@ fn build_ui(
                                         data.len(),
                                     );
                                 }
+                                // process_output only enqueues the bytes; ghostty parses
+                                // them into the screen on app_tick. Without this, remote
+                                // output (e.g. the initial shell prompt) stays invisible
+                                // until the next tick-triggering event (a keystroke), so
+                                // an SSH pane looks blank until you type. Tick now.
+                                let app_ptr = crate::ghostty::callbacks::APP_PTR
+                                    .load(std::sync::atomic::Ordering::SeqCst);
+                                if app_ptr != 0 {
+                                    unsafe {
+                                        crate::ghostty::ffi::ghostty_app_tick(
+                                            app_ptr as crate::ghostty::ffi::ghostty_app_t,
+                                        );
+                                    }
+                                }
                                 // Queue render for the GLArea associated with this surface
                                 if let Ok(gl_areas) = crate::ghostty::callbacks::GL_TO_SURFACE.lock() {
                                     for (&gl_ptr, &s_ptr) in gl_areas.iter() {

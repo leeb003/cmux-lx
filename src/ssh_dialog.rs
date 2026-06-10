@@ -96,6 +96,15 @@ fn trigger_ssh_connect(state: &Rc<RefCell<AppState>>, target: String) {
     let id = state.borrow_mut().create_remote_workspace(target.clone(), &bridge);
     state.borrow_mut().workspace_bridges.insert(id, bridge.clone());
 
+    // Wire the close button + right-click context menu (Rename/Close) on the new
+    // remote row, same as plain workspaces get in handle_new_workspace. Without
+    // this, SSH tabs can't be renamed or closed from the sidebar.
+    {
+        let sidebar_list = state.borrow().sidebar_list.clone();
+        let app = state.borrow().gtk_app.clone();
+        crate::sidebar::wire_latest_row(&sidebar_list, state.clone(), &app);
+    }
+
     let ssh_tx = state.borrow().ssh_event_tx.clone();
     let rt_handle = state.borrow().runtime_handle.clone();
     if let (Some(tx), Some(rt)) = (ssh_tx, rt_handle) {
