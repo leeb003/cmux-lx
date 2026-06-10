@@ -371,43 +371,54 @@ pub fn register_accels(app: &gtk4::Application) {
 }
 
 /// Build the hamburger menu model (D-11, D-12).
-/// Returns a gio::Menu that can be set on a MenuButton.
-/// Per D-12: sections use File/Edit/View/Help labels.
+/// Returns a gio::Menu for the hamburger MenuButton.
+///
+/// Sections use `None` labels so they render as plain separators rather than
+/// non-interactive header rows — the labelled "File/Edit/View/Help" headers
+/// read as broken (unclickable) menu items. Panes (split) come first so
+/// "new pane" is discoverable, and the permanently-disabled "Find" is omitted.
 pub fn build_hamburger_menu() -> gio::Menu {
     let menu = gio::Menu::new();
 
-    // File section (D-12)
-    let file_section = gio::Menu::new();
-    file_section.append(Some("New Workspace"), Some("win.new-workspace"));
-    file_section.append(Some("New SSH Workspace"), Some("win.new-ssh-workspace"));
-    file_section.append(Some("New Browser"), Some("win.browser-open"));
-    file_section.append(Some("Close Pane"), Some("win.close-pane"));
-    file_section.append(Some("Close Workspace"), Some("win.close-workspace"));
-    file_section.append(Some("Quit"), Some("app.quit"));
-    menu.append_section(Some("File"), &file_section);
+    // New / create
+    let new_section = gio::Menu::new();
+    new_section.append(Some("New Pane (Split Right)"), Some("win.split-right"));
+    new_section.append(Some("New Pane Below (Split Down)"), Some("win.split-down"));
+    new_section.append(Some("New Workspace"), Some("win.new-workspace"));
+    new_section.append(Some("New SSH Workspace…"), Some("win.new-ssh-workspace"));
+    new_section.append(Some("New Browser"), Some("win.browser-open"));
+    menu.append_section(None, &new_section);
 
-    // Edit section (D-12)
+    // Close
+    let close_section = gio::Menu::new();
+    close_section.append(Some("Close Pane"), Some("win.close-pane"));
+    close_section.append(Some("Close Workspace"), Some("win.close-workspace"));
+    menu.append_section(None, &close_section);
+
+    // Edit
     let edit_section = gio::Menu::new();
     edit_section.append(Some("Copy"), Some("win.copy"));
     edit_section.append(Some("Paste"), Some("win.paste"));
-    edit_section.append(Some("Find"), Some("win.find"));
-    edit_section.append(Some("Browser Settings…"), Some("win.browser-settings"));
-    edit_section.append(Some("Download Bundled Chromium…"), Some("win.download-chromium"));
-    edit_section.append(Some("Preferences"), Some("win.preferences"));
-    menu.append_section(Some("Edit"), &edit_section);
+    menu.append_section(None, &edit_section);
 
-    // View section (D-12)
+    // View / configuration
     let view_section = gio::Menu::new();
     view_section.append(Some("Toggle Sidebar"), Some("win.toggle-sidebar"));
-    view_section.append(Some("Split Right"), Some("win.split-right"));
-    view_section.append(Some("Split Down"), Some("win.split-down"));
-    menu.append_section(Some("View"), &view_section);
+    view_section.append(Some("Browser Settings…"), Some("win.browser-settings"));
+    view_section.append(Some("Download Bundled Chromium…"), Some("win.download-chromium"));
+    view_section.append(Some("Preferences"), Some("win.preferences"));
+    menu.append_section(None, &view_section);
 
-    // Help section (D-12)
+    // Help
     let help_section = gio::Menu::new();
     help_section.append(Some("Keyboard Shortcuts"), Some("win.keyboard-shortcuts"));
     help_section.append(Some("About cmux"), Some("win.about"));
-    menu.append_section(Some("Help"), &help_section);
+    menu.append_section(None, &help_section);
+
+    // Quit
+    let quit_section = gio::Menu::new();
+    quit_section.append(Some("Quit"), Some("app.quit"));
+    menu.append_section(None, &quit_section);
 
     menu
 }
@@ -453,100 +464,102 @@ pub fn build_browser_context_menu() -> gio::Menu {
     menu
 }
 
-/// Build GtkShortcutsWindow (D-14) with all shortcuts grouped by category.
-/// Uses GTK 4.14 add_section/add_group API.
-fn build_shortcuts_window() -> gtk4::ShortcutsWindow {
-    let window = gtk4::ShortcutsWindow::builder().build();
+/// Build a plain keyboard-shortcuts window.
+///
+/// Deliberately NOT a gtk4::ShortcutsWindow: that widget has a long-standing
+/// GTK4 crash-on-close bug (assertion during gdk_surface_destroy on teardown,
+/// and it is deprecated upstream). A plain GtkWindow with a scrollable list
+/// tears down cleanly.
+fn build_shortcuts_window() -> gtk4::Window {
+    let sections: &[(&str, &[(&str, &str)])] = &[
+        (
+            "Workspaces",
+            &[
+                ("Ctrl+N", "New Workspace"),
+                ("Ctrl+Shift+W", "Close Workspace"),
+                ("Ctrl+]", "Next Workspace"),
+                ("Ctrl+[", "Previous Workspace"),
+                ("Ctrl+Shift+R", "Rename Workspace"),
+                ("Ctrl+1…9", "Switch to Workspace 1–9"),
+            ],
+        ),
+        (
+            "Panes",
+            &[
+                ("Ctrl+D", "Split Right (new pane)"),
+                ("Ctrl+Shift+D", "Split Down (new pane)"),
+                ("Ctrl+Shift+X", "Close Pane"),
+                ("Ctrl+Shift+←/→/↑/↓", "Focus pane in direction"),
+            ],
+        ),
+        (
+            "Edit",
+            &[("Ctrl+Shift+C", "Copy"), ("Ctrl+Shift+V", "Paste")],
+        ),
+        (
+            "View",
+            &[
+                ("Ctrl+B", "Toggle Sidebar"),
+                ("Ctrl+Shift+B", "Open Browser"),
+                ("Ctrl+Shift+S", "New SSH Workspace"),
+            ],
+        ),
+        ("General", &[("Ctrl+Q", "Quit")]),
+    ];
 
-    // Workspaces section
-    let ws_section = gtk4::ShortcutsSection::builder()
-        .section_name("workspaces")
-        .title("Workspaces")
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+    vbox.set_margin_top(16);
+    vbox.set_margin_bottom(16);
+    vbox.set_margin_start(20);
+    vbox.set_margin_end(20);
+
+    for (section, items) in sections {
+        let header = gtk4::Label::new(None);
+        header.set_markup(&format!("<b>{section}</b>"));
+        header.set_halign(gtk4::Align::Start);
+        header.set_margin_top(10);
+        vbox.append(&header);
+        for (accel, title) in *items {
+            let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 24);
+            let title_lbl = gtk4::Label::new(Some(title));
+            title_lbl.set_halign(gtk4::Align::Start);
+            title_lbl.set_hexpand(true);
+            let accel_lbl = gtk4::Label::new(Some(accel));
+            accel_lbl.set_halign(gtk4::Align::End);
+            accel_lbl.add_css_class("dim-label");
+            row.append(&title_lbl);
+            row.append(&accel_lbl);
+            vbox.append(&row);
+        }
+    }
+
+    let scroller = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .child(&vbox)
         .build();
 
-    let ws_group = gtk4::ShortcutsGroup::builder()
-        .title("Workspaces")
+    let window = gtk4::Window::builder()
+        .title("Keyboard Shortcuts")
+        .default_width(440)
+        .default_height(560)
+        .modal(true)
         .build();
-    ws_group.add_shortcut(&shortcut("<Ctrl>n", "New Workspace"));
-    ws_group.add_shortcut(&shortcut("<Ctrl><Shift>w", "Close Workspace"));
-    ws_group.add_shortcut(&shortcut("<Ctrl>bracketright", "Next Workspace"));
-    ws_group.add_shortcut(&shortcut("<Ctrl>bracketleft", "Previous Workspace"));
-    ws_group.add_shortcut(&shortcut("<Ctrl><Shift>r", "Rename Workspace"));
-    ws_group.add_shortcut(&shortcut("<Ctrl>1..9", "Switch to Workspace 1-9"));
-    ws_section.add_group(&ws_group);
-    window.add_section(&ws_section);
+    window.set_child(Some(&scroller));
 
-    // Panes section
-    let pane_section = gtk4::ShortcutsSection::builder()
-        .section_name("panes")
-        .title("Panes")
-        .build();
-
-    let pane_group = gtk4::ShortcutsGroup::builder()
-        .title("Panes")
-        .build();
-    pane_group.add_shortcut(&shortcut("<Ctrl>d", "Split Right"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>d", "Split Down"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>x", "Close Pane"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>Left", "Focus Left"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>Right", "Focus Right"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>Up", "Focus Up"));
-    pane_group.add_shortcut(&shortcut("<Ctrl><Shift>Down", "Focus Down"));
-    pane_section.add_group(&pane_group);
-    window.add_section(&pane_section);
-
-    // Edit section
-    let edit_section = gtk4::ShortcutsSection::builder()
-        .section_name("edit")
-        .title("Edit")
-        .build();
-
-    let edit_group = gtk4::ShortcutsGroup::builder()
-        .title("Edit")
-        .build();
-    edit_group.add_shortcut(&shortcut("<Ctrl><Shift>c", "Copy"));
-    edit_group.add_shortcut(&shortcut("<Ctrl><Shift>v", "Paste"));
-    edit_group.add_shortcut(&shortcut("<Ctrl>f", "Find"));
-    edit_section.add_group(&edit_group);
-    window.add_section(&edit_section);
-
-    // View section
-    let view_section = gtk4::ShortcutsSection::builder()
-        .section_name("view")
-        .title("View")
-        .build();
-
-    let view_group = gtk4::ShortcutsGroup::builder()
-        .title("View")
-        .build();
-    view_group.add_shortcut(&shortcut("<Ctrl>b", "Toggle Sidebar"));
-    view_group.add_shortcut(&shortcut("<Ctrl><Shift>b", "Open Browser"));
-    view_group.add_shortcut(&shortcut("<Ctrl><Shift>s", "New SSH Workspace"));
-    view_section.add_group(&view_group);
-    window.add_section(&view_section);
-
-    // General section
-    let general_section = gtk4::ShortcutsSection::builder()
-        .section_name("general")
-        .title("General")
-        .build();
-
-    let general_group = gtk4::ShortcutsGroup::builder()
-        .title("General")
-        .build();
-    general_group.add_shortcut(&shortcut("<Ctrl>q", "Quit"));
-    general_section.add_group(&general_group);
-    window.add_section(&general_section);
+    // Close on Escape.
+    let key = gtk4::EventControllerKey::new();
+    let win_for_key = window.clone();
+    key.connect_key_pressed(move |_, keyval, _, _| {
+        if keyval == gtk4::gdk::Key::Escape {
+            win_for_key.close();
+            gtk4::glib::Propagation::Stop
+        } else {
+            gtk4::glib::Propagation::Proceed
+        }
+    });
+    window.add_controller(key);
 
     window
-}
-
-/// Helper to create a ShortcutsShortcut widget.
-fn shortcut(accel: &str, title: &str) -> gtk4::ShortcutsShortcut {
-    gtk4::ShortcutsShortcut::builder()
-        .accelerator(accel)
-        .title(title)
-        .build()
 }
 
 /// Quote a string for safe inclusion inside `bash -c '...'`. Single-quote
