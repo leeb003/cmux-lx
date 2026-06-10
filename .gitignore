@@ -1,0 +1,86 @@
+# Xcode
+.build/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS
+.DS_Store
+
+# Local env
+.env
+.envrc
+
+# Swift Package Manager
+.swiftpm/
+
+# GhosttyKit binary (built from ghostty submodule via scripts/setup.sh)
+GhosttyKit.xcframework
+GhosttyKit.xcframework.bak-*/
+
+# Release artifacts
+GhosttyTabs-*.zip
+cmux-macos.dmg
+appcast.xml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.hypothesis/
+.vercel
+
+# Zig
+.zig-cache/
+zig-out/
+zig-x86_64-linux-0.15.2/
+
+# Rust
+target/
+
+# Node
+node_modules/
+.next/
+
+# Test outputs
+tests/visual_output/
+tests/visual_report.html
+
+# Local scratch (screenshots, etc.)
+tmp/
+tmp-*/
+
+# Build artifacts
+dist/
+daemon/remote/cmuxd-remote
+found
+
+# AppImage build cache + scratch extraction
+.build-tools/
+squashfs-root/
+AppDir-*/
+
+# Agent / IDE workspaces
+.serena/
+.claude/worktrees/
+
+# codedb local indices (per-machine)
+codedb.snapshot
+
+# Local-only mode marker (TEAM.md is generated per-session and per-machine)
+TEAM.md
+
+# Submodule build artefacts
+ghostty/zig-out/
+ghostty/.zig-cache/
+ghostty/codedb.snapshot
+
+# Per-user backups (browser_settings.rs temp + RTK logs etc.)
+*.cmux-settings.*.tmp
+.local/
+
+# Editor swap
+*.swp
+.~*

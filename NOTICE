@@ -1,0 +1,53 @@
+cmux-linux — hardened, Linux-only clean fork
+=============================================
+
+This repository is a Linux Rust/GTK4 terminal for running AI coding agents,
+derived from the cmux lineage. It is licensed under the GNU Affero General
+Public License v3.0 or later (AGPL-3.0-or-later); see LICENSE. All derivative
+work here remains under the same license.
+
+Provenance
+----------
+  * manaflow-ai/cmux          — original cmux (macOS, Swift/AppKit). Upstream
+                                concept and much of the surrounding tooling.
+                                https://github.com/manaflow-ai/cmux
+  * bradwilson331/cmux-linux  — first Rust/GTK4 Linux port (now unmaintained
+                                and unbuildable).
+  * tcsenpai/cmux-linux       — modernized, buildable Linux port; the direct
+                                basis for this fork.
+                                https://github.com/tcsenpai/cmux-linux
+
+Thanks to all of the above. This fork would not exist without their work.
+
+What this fork changes
+----------------------
+This is a cleanup + supply-chain-hardening fork, not new features:
+
+  * Removed the macOS Swift app tree, Xcode project, marketing site, the
+    accidentally-committed node_modules, internal planning dirs, and a
+    committed debug log.
+  * Submodules are pinned by commit (not floating branches) for reproducible
+    builds — see .gitmodules.
+  * The GLAD OpenGL loader is now compiled from source in build.rs
+    (ghostty/vendor/glad) instead of linking a prebuilt object committed to
+    the repo. Nothing opaque is linked into the binary.
+
+Verified dependencies
+---------------------
+  * ghostty submodule is pinned to leeb003/ghostty@be9d18e9f — our own fork
+    of tcsenpai/ghostty (branch cmux-fork-gtk4-platform), forked so the pin
+    cannot disappear from under the build. Its delta over upstream
+    manaflow-ai/ghostty is exactly 2 commits / 2 files / +44 −6
+    (src/apprt/embedded.zig, src/renderer/OpenGL.zig) — a GTK4 embedded
+    platform variant plus the OpenGL-loader fix. This patch was reviewed
+    line by line and contains no network, file, or process activity.
+  * agent-browser submodule is pinned to the upstream vercel-labs/agent-browser
+    commit 328ce8a98 ("Pin Linux release glibc floor (#1417)").
+
+Security posture
+----------------
+The Linux runtime contains no telemetry, analytics, crash reporting, or
+auto-update, and makes no outbound network connections of its own. The
+control surface is a per-user Unix domain socket (0600) under
+$XDG_RUNTIME_DIR. The browser-preview feature downloads Google's official
+Chrome for Testing into a per-user directory only when explicitly invoked.

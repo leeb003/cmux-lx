@@ -1,0 +1,14 @@
+# Submodules are pinned by commit (the gitlink SHA recorded in the tree),
+# not by branch, so the build is reproducible and a submodule cannot silently
+# move under us. Verified pins:
+#   ghostty       be9d18e9f  — GTK4-platform fork; the +44/-6 patch over
+#                              upstream manaflow-ai/ghostty was audited line by
+#                              line (see NOTICE).
+#   agent-browser 328ce8a98  — upstream vercel-labs/agent-browser commit
+#                              "Pin Linux release glibc floor (#1417)".
+[submodule "ghostty"]
+	path = ghostty
+	url = https://github.com/leeb003/ghostty.git
+[submodule "agent-browser"]
+	path = agent-browser
+	url = https://github.com/vercel-labs/agent-browser.git
