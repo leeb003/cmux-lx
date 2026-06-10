@@ -948,11 +948,10 @@ impl SplitEngine {
         self.active_pane_id = surviving_id;
         self.root.update_focus_css(surviving_id);
 
-        // Call ghostty_surface_set_focus on the surviving surface (SPLIT-07).
+        // Focus the surviving surface (SPLIT-07). Guarded: collapsing the split
+        // can reparent/re-realize the survivor, so its pointer may be stale.
         if let Some(surface) = self.find_surface(surviving_id) {
-            unsafe {
-                ffi::ghostty_surface_set_focus(surface, true);
-            }
+            crate::ghostty::callbacks::set_focus_if_live(surface, true);
         }
 
         // Grab GTK focus on the surviving pane's widget (GLArea or URL entry).
@@ -1170,12 +1169,18 @@ fn replace_child_in_parent(
     new_widget: &gtk4::Widget,
 ) {
     if let Some(paned) = parent.downcast_ref::<gtk4::Paned>() {
-        if paned
+        // new_widget is the surviving sibling, still parented to the Paned being
+        // collapsed. GtkPaned asserts (gtk_paned_set_*_child) unless the incoming
+        // child is unparented first — mirror the Stack branch below. Without this
+        // the set_*_child is a no-op CRITICAL that corrupts the widget tree and
+        // crashes on pane close.
+        let target_is_start = paned
             .start_child()
             .as_ref()
             .map(|w| w == old_widget)
-            .unwrap_or(false)
-        {
+            .unwrap_or(false);
+        remove_widget_from_parent(new_widget);
+        if target_is_start {
             paned.set_start_child(Some(new_widget));
         } else {
             paned.set_end_child(Some(new_widget));

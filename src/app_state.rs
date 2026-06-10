@@ -7,6 +7,16 @@ use std::rc::Rc;
 
 pub type AppStateRef = Rc<RefCell<AppState>>;
 
+/// True if `name` is an auto-generated default ("Workspace <n>"), i.e. the user
+/// hasn't renamed it. Used to decide which workspaces to keep sequentially
+/// numbered. A user who literally types "Workspace 7" is treated as default —
+/// an acceptable corner case.
+fn is_default_workspace_name(name: &str) -> bool {
+    name.strip_prefix("Workspace ")
+        .map(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        .unwrap_or(false)
+}
+
 pub struct AppState {
     pub split_engines: Vec<SplitEngine>,
     pub gtk_app: gtk4::Application,
@@ -135,8 +145,37 @@ impl AppState {
         let new_index = self.workspaces.len() - 1;
         self.switch_to_index(new_index);
 
+        self.renumber_default_workspaces();
         self.trigger_session_save();
         id
+    }
+
+    /// Keep auto-named workspaces numbered sequentially by position
+    /// ("Workspace 1", "Workspace 2", …) so closing one doesn't leave gaps.
+    /// Workspaces the user has renamed (name not matching "Workspace <n>") are
+    /// left untouched. Called after create/close.
+    pub fn renumber_default_workspaces(&mut self) {
+        for (i, ws) in self.workspaces.iter_mut().enumerate() {
+            if !is_default_workspace_name(&ws.name) {
+                continue;
+            }
+            let new_name = format!("Workspace {}", i + 1);
+            if ws.name == new_name {
+                continue;
+            }
+            ws.name = new_name.clone();
+            // Update the sidebar row label in place: row > hbox > vbox > label.
+            if let Some(row) = self.sidebar_list.row_at_index(i as i32) {
+                if let Some(label) = row
+                    .child()
+                    .and_then(|hbox| hbox.first_child())
+                    .and_then(|vbox| vbox.first_child())
+                    .and_then(|w| w.downcast::<gtk4::Label>().ok())
+                {
+                    label.set_text(&new_name);
+                }
+            }
+        }
     }
 
     /// Restore a workspace from a session snapshot (SESS-02).
@@ -344,6 +383,7 @@ impl AppState {
         }
 
         self.switch_to_index(self.active_index);
+        self.renumber_default_workspaces();
         self.trigger_session_save();
         true
     }
