@@ -114,16 +114,17 @@ cat > "$PKG_ROOT/DEBIAN/control" << CTRL
 Package: cmux
 Version: ${VERSION}
 Architecture: amd64
-Maintainer: cmux <noreply@cmux.dev>
+Maintainer: leeb003 <lee@scripthat.com>
 Section: x11
 Priority: optional
 Depends: libgtk-4-1, libfontconfig1, libfreetype6, libonig5, libgl1, libegl1, libharfbuzz0b, libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libpangoft2-1.0-0, libepoxy0, libxkbcommon0, libglib2.0-0t64 | libglib2.0-0, libgraphene-1.0-0t64 | libgraphene-1.0-0
 Recommends: curl, jq, unzip, libnss3, libnspr4, libdrm2, libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libgbm1, libasound2t64 | libasound2, libcups2t64 | libcups2, libatk1.0-0t64 | libatk1.0-0, libatk-bridge2.0-0t64 | libatk-bridge2.0-0, libdbus-1-3t64 | libdbus-1-3
 Suggests: chromium
-Homepage: https://cmux.dev
-Description: GPU-accelerated terminal multiplexer
- cmux provides tabs, splits, workspaces, and socket CLI control
- powered by Ghostty's GPU-accelerated terminal rendering.
+Homepage: https://github.com/leeb003/cmux-lx
+Description: GPU-accelerated terminal for AI coding agents (Linux)
+ cmux-lx provides vertical tabs, splits, workspaces, a browser preview
+ pane, and socket CLI control, powered by Ghostty's GPU-accelerated
+ terminal rendering. Hardened Linux-only fork; see /usr/share/doc.
 CTRL
 
 # Build the .deb
