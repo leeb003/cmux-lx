@@ -39,6 +39,35 @@ pub static BELL_PANE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 /// Phase 4: Flag indicating a bell is pending processing.
 pub static BELL_PENDING: AtomicBool = AtomicBool::new(false);
 
+/// Pane ID that most recently received GTK focus (e.g. via a mouse click).
+/// Drained by the main-loop poll, which moves the active SplitEngine's active
+/// pane + highlight so clicking a pane activates it. 0 = nothing pending.
+pub static FOCUS_PENDING_PANE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Set ghostty focus on `surface` only if it is a currently-live surface.
+///
+/// `ghostty_surface_set_focus` dereferences the surface, so passing a null
+/// placeholder (unrealized pane) or a freed/dangling pointer SIGSEGVs — this
+/// was the crash observed when switching panes. SURFACE_REGISTRY is the
+/// authoritative liveness set: entries are inserted at realize and removed in
+/// the ghostty_surface_free paths, so a pointer absent from it must not be
+/// dereferenced. All accesses are on the GLib main thread, so the check is not
+/// racy against frees (which also happen on the main thread).
+pub fn set_focus_if_live(surface: crate::ghostty::ffi::ghostty_surface_t, focused: bool) {
+    if surface.is_null() {
+        return;
+    }
+    let live = SURFACE_REGISTRY
+        .lock()
+        .map(|reg| reg.contains_key(&(surface as usize)))
+        .unwrap_or(false);
+    if live {
+        unsafe {
+            crate::ghostty::ffi::ghostty_surface_set_focus(surface, focused);
+        }
+    }
+}
+
 /// Called by Ghostty from its renderer thread. Must not call any ghostty_* API inline.
 /// Instead, schedules ghostty_app_tick() on the GLib main loop (per D-04, GHOST-07).
 /// Wakeup count for diagnostic logging (only logs occasionally to avoid spam)

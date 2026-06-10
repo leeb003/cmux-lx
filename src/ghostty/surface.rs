@@ -627,13 +627,17 @@ pub fn create_surface(
         let gl_area_for_focus = gl_area.clone();
         move |_ctrl| {
             if let Some(surface) = *cell.borrow() {
+                callbacks::set_focus_if_live(surface, true);
+                // Move the engine's active pane to this one so a mouse click
+                // activates the pane (highlight + keyboard-nav origin follow).
+                // Drained by the main-loop poll in main.rs.
+                callbacks::FOCUS_PENDING_PANE.store(pane_id, std::sync::atomic::Ordering::SeqCst);
+                // Kick the render loop so the cursor becomes visible immediately
+                // rather than waiting up to one blink interval (~500ms). The
+                // renderer thread processes the focused=true message asynchronously;
+                // without a refresh+queue_render here, GTK renders that happen
+                // before the message is processed show the stale (invisible) cursor.
                 unsafe {
-                    ffi::ghostty_surface_set_focus(surface, true);
-                    // Kick the render loop so the cursor becomes visible immediately
-                    // rather than waiting up to one blink interval (~500ms). The
-                    // renderer thread processes the focused=true message asynchronously;
-                    // without a refresh+queue_render here, GTK renders that happen
-                    // before the message is processed show the stale (invisible) cursor.
                     ffi::ghostty_surface_refresh(surface);
                 }
                 gl_area_for_focus.queue_render();
@@ -644,9 +648,7 @@ pub fn create_surface(
         let cell = surface_cell.clone();
         move |_ctrl| {
             if let Some(surface) = *cell.borrow() {
-                unsafe {
-                    ffi::ghostty_surface_set_focus(surface, false);
-                }
+                callbacks::set_focus_if_live(surface, false);
             }
         }
     });

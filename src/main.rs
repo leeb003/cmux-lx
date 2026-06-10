@@ -49,8 +49,6 @@ paned > separator:hover { background-color: #5b8dd9; }
     border-radius: 50%;
     min-width: 8px;
     min-height: 8px;
-    max-width: 8px;
-    max-height: 8px;
     margin: 0 4px;
 }
 /* Phase 4: SSH connection state subtitle (SSH-01, SSH-04) */
@@ -79,7 +77,6 @@ paned > separator:hover { background-color: #5b8dd9; }
 .browser-nav-btn:active { background-color: rgba(255, 255, 255, 0.12); }
 .browser-nav-btn:disabled { color: #555555; }
 .browser-nav-go { color: #5b8dd9; font-weight: 600; }
-.browser-nav-devtools { margin-left: auto; }
 .browser-nav-devtools:checked { background-color: rgba(91, 141, 217, 0.2); color: #5b8dd9; }
 /* Phase 8 Plan 06: DevTools overlay */
 .devtools-overlay { background-color: rgba(26, 26, 26, 0.92); }
@@ -257,6 +254,11 @@ fn build_ui(
     // point in the app lifecycle (theme reload, settings refresh, etc.).
     {
         use gtk4::prelude::*;
+        // Match cmux's dark CSS chrome: make the base GTK theme render its dark
+        // variant so standard (un-classed) widgets — buttons, labels, entries,
+        // menus — don't fall back to a light system theme and clash with the
+        // dark app background.
+        gtk4::Settings::for_display(&display).set_gtk_application_prefer_dark_theme(true);
         let adwaita_index =
             std::path::PathBuf::from("/usr/share/icons/Adwaita/index.theme");
         if adwaita_index.exists() {
@@ -277,7 +279,10 @@ fn build_ui(
             icon_theme.set_search_path(
                 &search_path.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
             );
-            icon_theme.set_theme_name(Some("Adwaita"));
+            // NB: do NOT call icon_theme.set_theme_name() here — the per-display
+            // IconTheme is a singleton and GTK4 asserts (!is_display_singleton),
+            // emitting a CRITICAL. The theme name is already set the supported
+            // way above via Settings::set_gtk_icon_theme_name().
         }
     }
 
@@ -413,6 +418,14 @@ fn build_ui(
                 let pane_id = crate::ghostty::callbacks::BELL_PANE_ID.load(std::sync::atomic::Ordering::SeqCst);
                 if pane_id != 0 {
                     state.borrow_mut().set_pane_attention(pane_id);
+                }
+            }
+            // Click/focus-to-activate: move the active pane to whatever pane most
+            // recently received GTK focus (e.g. via a mouse click on a split pane).
+            let focus_pane = crate::ghostty::callbacks::FOCUS_PENDING_PANE.swap(0, std::sync::atomic::Ordering::SeqCst);
+            if focus_pane != 0 {
+                if let Some(engine) = state.borrow_mut().active_split_engine_mut() {
+                    engine.set_active_pane(focus_pane);
                 }
             }
             // Process SSH events

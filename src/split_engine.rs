@@ -971,19 +971,16 @@ impl SplitEngine {
     pub fn focus_next_in_direction(&mut self, direction: FocusDirection) -> bool {
         let active_id = self.active_pane_id;
         if let Some(new_id) = find_adjacent(&self.root, active_id, direction) {
-            // Unfocus old surface.
+            // Unfocus old surface. Guard against null/freed surface pointers —
+            // an unrealized or just-closed pane would otherwise SIGSEGV here.
             if let Some(old_surface) = self.find_surface(active_id) {
-                unsafe {
-                    ffi::ghostty_surface_set_focus(old_surface, false);
-                }
+                crate::ghostty::callbacks::set_focus_if_live(old_surface, false);
             }
             self.active_pane_id = new_id;
             self.root.update_focus_css(new_id);
             // Focus new surface or Preview URL entry.
             if let Some(new_surface) = self.find_surface(new_id) {
-                unsafe {
-                    ffi::ghostty_surface_set_focus(new_surface, true);
-                }
+                crate::ghostty::callbacks::set_focus_if_live(new_surface, true);
             }
             if let Some(gl_area) = self.find_gl_area(new_id) {
                 gl_area.grab_focus();
@@ -993,6 +990,22 @@ impl SplitEngine {
             true
         } else {
             false
+        }
+    }
+
+    /// Set the active pane (e.g. from a mouse click / GTK focus routing) and
+    /// move the active-pane highlight. No-op if `pane_id` isn't in this engine
+    /// or is already active. Unlike focus_next_in_direction this does not call
+    /// ghostty_surface_set_focus — GTK focus already moved the surface focus via
+    /// the per-surface focus controller; this only syncs the engine's notion of
+    /// the active pane so the highlight and keyboard nav origin follow the click.
+    pub fn set_active_pane(&mut self, pane_id: u64) {
+        if self.active_pane_id == pane_id {
+            return;
+        }
+        if self.all_panes().iter().any(|(_, pid, _)| *pid == pane_id) {
+            self.active_pane_id = pane_id;
+            self.root.update_focus_css(pane_id);
         }
     }
 
