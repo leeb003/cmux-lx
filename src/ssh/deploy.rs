@@ -9,7 +9,18 @@ pub fn local_daemon_path() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
             format!("{home}/.local/share")
         });
-    PathBuf::from(data_dir).join("cmux/bin/cmuxd-remote-linux-amd64")
+    // Prefer the per-user build (scripts/install-cmuxd-remote.sh).
+    let xdg = PathBuf::from(data_dir).join("cmux/bin/cmuxd-remote-linux-amd64");
+    if xdg.exists() {
+        return xdg;
+    }
+    // Fall back to the packaged location: the .deb installs the daemon here.
+    let packaged = PathBuf::from("/usr/lib/cmux/cmuxd-remote");
+    if packaged.exists() {
+        return packaged;
+    }
+    // Neither present — return the XDG path so the "not found" error is actionable.
+    xdg
 }
 
 /// Deploy cmuxd-remote to remote host via scp.

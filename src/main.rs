@@ -426,6 +426,12 @@ fn build_ui(
             if focus_pane != 0 {
                 if let Some(engine) = state.borrow_mut().active_split_engine_mut() {
                     engine.set_active_pane(focus_pane);
+                    // Grab GTK keyboard focus + ghostty surface focus onto the
+                    // now-active pane. Without this, a click only moves the
+                    // highlight; the focus-restore path snaps keyboard focus back
+                    // to the previously-active pane, so the highlighted pane and
+                    // the pane receiving keystrokes diverge.
+                    engine.grab_active_focus();
                 }
             }
             // Process SSH events
