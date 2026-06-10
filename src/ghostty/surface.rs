@@ -139,9 +139,6 @@ pub fn create_surface(
                     area.as_ptr(),
                     stale_surface,
                 );
-                if let Ok(mut registry) = callbacks::SURFACE_REGISTRY.lock() {
-                    registry.remove(&(stale_surface as usize));
-                }
                 // Drop the SSH io_write_userdata Arc, if any, BEFORE freeing
                 // the surface — once freed, ghostty's destructor may walk the
                 // userdata pointer for its own cleanup.
@@ -150,9 +147,8 @@ pub fn create_surface(
                         std::sync::Arc::from_raw(ctx_raw);
                     }
                 }
-                unsafe {
-                    ffi::ghostty_surface_free(stale_surface);
-                }
+                // Idempotent free (registry remove + free once).
+                callbacks::free_surface_if_live(stale_surface);
             }
 
             eprintln!("cmux: GL context made current, no error");
@@ -321,9 +317,6 @@ pub fn create_surface(
                     "cmux: freeing ghostty surface {:p} on unrealize",
                     surface,
                 );
-                if let Ok(mut registry) = callbacks::SURFACE_REGISTRY.lock() {
-                    registry.remove(&(surface as usize));
-                }
                 // Clear the stale-SURFACE_PTR window for the clipboard
                 // callbacks: if it pointed at this surface, zero it so the
                 // next clipboard event early-returns instead of dereferencing
@@ -339,9 +332,10 @@ pub fn create_surface(
                         std::sync::Arc::from_raw(ctx_raw);
                     }
                 }
-                unsafe {
-                    ffi::ghostty_surface_free(surface);
-                }
+                // Idempotent free (removes from SURFACE_REGISTRY + frees once):
+                // close_workspace / close_pane may have already freed this
+                // surface, so guard against a double free (SIGSEGV).
+                callbacks::free_surface_if_live(surface);
             }
         });
     }
@@ -550,7 +544,14 @@ pub fn create_surface(
     click_gesture.set_button(0); // 0 = listen to all mouse buttons
     click_gesture.connect_pressed({
         let cell = surface_cell.clone();
+        let gl_area_click = gl_area.clone();
         move |gesture, _n_press, _x, _y| {
+            // Activate this pane on click. set_focus_on_click alone proved
+            // unreliable for GLArea, so grab keyboard focus explicitly and
+            // record the pane so the main-loop poll moves the active pane +
+            // highlight. This runs even before the surface is realized.
+            gl_area_click.grab_focus();
+            callbacks::FOCUS_PENDING_PANE.store(pane_id, std::sync::atomic::Ordering::SeqCst);
             let surface = match *cell.borrow() {
                 Some(s) => s,
                 None => return,
@@ -628,10 +629,10 @@ pub fn create_surface(
         move |_ctrl| {
             if let Some(surface) = *cell.borrow() {
                 callbacks::set_focus_if_live(surface, true);
-                // Move the engine's active pane to this one so a mouse click
-                // activates the pane (highlight + keyboard-nav origin follow).
-                // Drained by the main-loop poll in main.rs.
-                callbacks::FOCUS_PENDING_PANE.store(pane_id, std::sync::atomic::Ordering::SeqCst);
+                // NB: do NOT record FOCUS_PENDING_PANE here. focus-enter fires on
+                // automatic/GTK re-focus of the already-active pane, which would
+                // clobber a click's intent before the poll drains it. Pane
+                // activation is recorded only from the explicit click gesture.
                 // Kick the render loop so the cursor becomes visible immediately
                 // rather than waiting up to one blink interval (~500ms). The
                 // renderer thread processes the focused=true message asynchronously;

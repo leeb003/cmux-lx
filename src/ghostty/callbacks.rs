@@ -68,6 +68,28 @@ pub fn set_focus_if_live(surface: crate::ghostty::ffi::ghostty_surface_t, focuse
     }
 }
 
+/// Free a ghostty surface at most once. Closing a workspace/pane frees surfaces
+/// from the split tree, and then tearing down the GtkStack page unrealizes the
+/// GLAreas whose unrealize callback also frees them — a double free → SIGSEGV.
+/// SURFACE_REGISTRY is the single source of truth for liveness: we remove the
+/// entry and free only if it was still present, so whichever path runs first
+/// wins and the second is a no-op. The check-and-remove is atomic under the
+/// registry lock, and all callers are on the GLib main thread.
+pub fn free_surface_if_live(surface: crate::ghostty::ffi::ghostty_surface_t) {
+    if surface.is_null() {
+        return;
+    }
+    let was_live = SURFACE_REGISTRY
+        .lock()
+        .map(|mut reg| reg.remove(&(surface as usize)).is_some())
+        .unwrap_or(false);
+    if was_live {
+        unsafe {
+            crate::ghostty::ffi::ghostty_surface_free(surface);
+        }
+    }
+}
+
 /// Called by Ghostty from its renderer thread. Must not call any ghostty_* API inline.
 /// Instead, schedules ghostty_app_tick() on the GLib main loop (per D-04, GHOST-07).
 /// Wakeup count for diagnostic logging (only logs occasionally to avoid spam)

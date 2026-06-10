@@ -316,14 +316,10 @@ impl AppState {
             let mut surfaces = Vec::new();
             engine.root.collect_surfaces(&mut surfaces);
             for surface in surfaces {
-                if !surface.is_null() {
-                    unsafe {
-                        crate::ghostty::ffi::ghostty_surface_free(surface);
-                    }
-                    if let Ok(mut reg) = crate::ghostty::callbacks::SURFACE_REGISTRY.lock() {
-                        reg.remove(&(surface as usize));
-                    }
-                }
+                // Idempotent free: removing the stack page below unrealizes these
+                // GLAreas, whose unrealize callback also frees the surface. Guard
+                // against the resulting double free (SIGSEGV on workspace close).
+                crate::ghostty::callbacks::free_surface_if_live(surface);
             }
         }
         self.split_engines.remove(index);

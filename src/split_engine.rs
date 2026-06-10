@@ -938,13 +938,11 @@ impl SplitEngine {
             }
         }
 
-        // Deregister from SURFACE_REGISTRY and free the surface.
-        unsafe {
-            ffi::ghostty_surface_free(surface_to_free);
-        }
-        if let Ok(mut registry) = crate::ghostty::callbacks::SURFACE_REGISTRY.lock() {
-            registry.remove(&(surface_to_free as usize));
-        }
+        // Deregister from SURFACE_REGISTRY and free the surface. Idempotent:
+        // the closed pane's GLArea is also unrealized when removed from the
+        // widget tree, and its unrealize callback frees the same surface —
+        // guard against the double free (SIGSEGV).
+        crate::ghostty::callbacks::free_surface_if_live(surface_to_free);
 
         // Update focus to the surviving pane.
         self.active_pane_id = surviving_id;
