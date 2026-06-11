@@ -380,13 +380,19 @@ impl SplitEngine {
                 collect_leaves_in_order(&root, &mut leaves);
                 leaves.first().copied().unwrap_or(1)
             });
-        Some(SplitEngine {
+        let engine = SplitEngine {
             root,
             active_pane_id: active_id,
             next_pane_id,
             app,
             ghostty_app,
-        })
+        };
+        // Mark the active pane so it carries the "active-pane" CSS class on
+        // restore — find_active_pane_id() keys off that class, so without this a
+        // restored single-pane workspace is invisible to paste/copy/etc. (only
+        // splitting would later set the class). Mirrors SplitEngine::new.
+        engine.root.update_focus_css(active_id);
+        Some(engine)
     }
 
     fn node_from_data(
