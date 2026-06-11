@@ -78,7 +78,7 @@ pub fn register_actions(
             let s = state.borrow();
             if let Some(engine) = s.active_split_engine() {
                 if let Some(pane_id) = engine.root.find_active_pane_id() {
-                    if let Some(surface) = engine.root.find_surface_for_pane(pane_id) {
+                    if let Some(surface) = engine.find_surface(pane_id) {
                         let action_str = b"copy_to_clipboard";
                         unsafe {
                             crate::ghostty::ffi::ghostty_surface_binding_action(
@@ -102,7 +102,7 @@ pub fn register_actions(
             let s = state.borrow();
             if let Some(engine) = s.active_split_engine() {
                 if let Some(pane_id) = engine.root.find_active_pane_id() {
-                    if let Some(surface) = engine.root.find_surface_for_pane(pane_id) {
+                    if let Some(surface) = engine.find_surface(pane_id) {
                         let action_str = b"paste_from_clipboard";
                         unsafe {
                             crate::ghostty::ffi::ghostty_surface_binding_action(

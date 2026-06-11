@@ -979,7 +979,10 @@ typedef struct {
 } ghostty_action_s;
 
 typedef void (*ghostty_runtime_wakeup_cb)(void*);
-typedef void (*ghostty_runtime_read_clipboard_cb)(void*,
+/* Returns whether the read was started (true) or not (false). embedded.zig
+ * frees the clipboard request state when this returns false, so a void/garbage
+ * return causes a use-after-free crash on paste — must be bool. */
+typedef bool (*ghostty_runtime_read_clipboard_cb)(void*,
                                                   ghostty_clipboard_e,
                                                   void*);
 typedef void (*ghostty_runtime_confirm_read_clipboard_cb)(

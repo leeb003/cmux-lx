@@ -695,19 +695,23 @@ pub(crate) unsafe extern "C" fn read_clipboard_cb(
     _userdata: *mut std::ffi::c_void,
     clipboard_type: crate::ghostty::ffi::ghostty_clipboard_e,
     request: *mut std::ffi::c_void,
-) {
+) -> bool {
     use gtk4::prelude::*;
     use std::sync::atomic::Ordering;
 
+    // MUST return bool: embedded.zig frees the clipboard request state when this
+    // returns false. Return true ONLY when we've actually scheduled the async
+    // read (and will therefore call complete_clipboard_request); the early-exit
+    // paths return false BEFORE scheduling anything, so ghostty frees the state
+    // and there is no deferred use-after-free.
     let surface_ptr = crate::ghostty::callbacks::SURFACE_PTR.load(Ordering::SeqCst);
     if surface_ptr == 0 {
-        return;
+        return false;
     }
-    let surface = surface_ptr as ffi::ghostty_surface_t;
 
     let display = match gtk4::gdk::Display::default() {
         Some(d) => d,
-        None => return,
+        None => return false,
     };
     let clipboard = if clipboard_type == ffi::ghostty_clipboard_e_GHOSTTY_CLIPBOARD_SELECTION {
         display.primary_clipboard()
@@ -715,23 +719,43 @@ pub(crate) unsafe extern "C" fn read_clipboard_cb(
         display.clipboard()
     };
 
-    // Read clipboard text synchronously using GLib event loop.
-    // gtk4::glib::MainContext::block_on runs the async future on the current (main) thread.
-    // This is safe here because read_clipboard_cb is called from the GLib main thread.
-    let text_result = glib::MainContext::default().block_on(clipboard.read_text_future());
+    // Read the clipboard ASYNCHRONOUSLY. The previous implementation used
+    // MainContext::block_on, which runs a NESTED GLib main loop while waiting for
+    // the clipboard — during which the next paste keystroke re-enters ghostty's
+    // clipboard-request machinery mid-request and crashes (observed on rapid
+    // paste). read_text_async schedules a main-thread completion and returns
+    // immediately, so there is no nested loop / reentrancy.
+    let request_addr = request as usize;
+    clipboard.read_text_async(gtk4::gio::Cancellable::NONE, move |result| {
+        let c_text = match result {
+            Ok(Some(ref s)) => std::ffi::CString::new(s.as_str()).ok(),
+            _ => None,
+        };
+        let text_ptr = c_text
+            .as_ref()
+            .map(|s| s.as_ptr())
+            .unwrap_or(std::ptr::null());
 
-    let c_text = match text_result {
-        Ok(Some(ref s)) => std::ffi::CString::new(s.as_str()).ok(),
-        _ => None,
-    };
-    let text_ptr = c_text
-        .as_ref()
-        .map(|s| s.as_ptr())
-        .unwrap_or(std::ptr::null());
-
-    unsafe {
-        ffi::ghostty_surface_complete_clipboard_request(surface, text_ptr, request, true);
-    }
+        // The pane may have been closed while the async read was in flight; only
+        // complete the request if its surface is still live, to avoid a
+        // use-after-free in ghostty_surface_complete_clipboard_request.
+        let live = crate::ghostty::callbacks::SURFACE_REGISTRY
+            .lock()
+            .map(|reg| reg.contains_key(&surface_ptr))
+            .unwrap_or(false);
+        if live {
+            unsafe {
+                ffi::ghostty_surface_complete_clipboard_request(
+                    surface_ptr as ffi::ghostty_surface_t,
+                    text_ptr,
+                    request_addr as *mut std::ffi::c_void,
+                    true,
+                );
+            }
+        }
+    });
+    // The async read is scheduled and will complete the request.
+    true
 }
 
 pub(crate) unsafe extern "C" fn confirm_read_clipboard_cb(

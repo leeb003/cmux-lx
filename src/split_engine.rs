@@ -324,13 +324,19 @@ impl SplitEngine {
             uuid: Uuid::new_v4(),
             has_attention: false,
         };
-        SplitEngine {
+        let engine = SplitEngine {
             root,
             active_pane_id: pane_id,
             next_pane_id: pane_id + 1,
             app,
             ghostty_app,
-        }
+        };
+        // Mark the initial pane active so it carries the "active-pane" CSS class
+        // from the start. find_active_pane_id() keys off that class, so without
+        // this a never-split single pane is invisible to it — breaking paste,
+        // copy, and the socket commands that resolve "the active pane".
+        engine.root.update_focus_css(pane_id);
+        engine
     }
 
     /// Update the surface pointer for a leaf after realize.
@@ -1012,7 +1018,7 @@ impl SplitEngine {
         update_surface_in_tree(&mut self.root, pane_id, surface);
     }
 
-    fn find_surface(&self, pane_id: u64) -> Option<ffi::ghostty_surface_t> {
+    pub fn find_surface(&self, pane_id: u64) -> Option<ffi::ghostty_surface_t> {
         find_surface_in_tree(&self.root, pane_id).or_else(|| {
             // Fallback: look up in global SURFACE_REGISTRY by scanning for pane_id.
             // SURFACE_REGISTRY maps surface_ptr (usize) → pane_id; need reverse lookup.
