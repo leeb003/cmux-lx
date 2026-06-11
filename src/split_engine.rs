@@ -1019,17 +1019,24 @@ impl SplitEngine {
     }
 
     pub fn find_surface(&self, pane_id: u64) -> Option<ffi::ghostty_surface_t> {
-        find_surface_in_tree(&self.root, pane_id).or_else(|| {
-            // Fallback: look up in global SURFACE_REGISTRY by scanning for pane_id.
-            // SURFACE_REGISTRY maps surface_ptr (usize) → pane_id; need reverse lookup.
-            if let Ok(reg) = crate::ghostty::callbacks::SURFACE_REGISTRY.lock() {
-                reg.iter()
-                    .find(|(_, &pid)| pid == pane_id)
-                    .map(|(&ptr, _)| ptr as ffi::ghostty_surface_t)
-            } else {
-                None
+        // Never return a stale/freed surface pointer: the tree leaf can still
+        // hold a pointer that was freed (e.g. after a re-realize on resize), and
+        // passing it to ghostty (binding_action / set_focus / clipboard) derefs
+        // freed memory and SIGSEGVs. SURFACE_REGISTRY is the authoritative live
+        // set — prefer the tree leaf's surface only if it's live, otherwise
+        // reverse-look-up the live surface for this pane.
+        let reg = match crate::ghostty::callbacks::SURFACE_REGISTRY.lock() {
+            Ok(reg) => reg,
+            Err(_) => return None,
+        };
+        if let Some(s) = find_surface_in_tree(&self.root, pane_id) {
+            if !s.is_null() && reg.contains_key(&(s as usize)) {
+                return Some(s);
             }
-        })
+        }
+        reg.iter()
+            .find(|(_, &pid)| pid == pane_id)
+            .map(|(&ptr, _)| ptr as ffi::ghostty_surface_t)
     }
 
     fn find_gl_area(&self, pane_id: u64) -> Option<gtk4::GLArea> {
