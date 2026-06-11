@@ -704,7 +704,18 @@ pub(crate) unsafe extern "C" fn read_clipboard_cb(
     // read (and will therefore call complete_clipboard_request); the early-exit
     // paths return false BEFORE scheduling anything, so ghostty frees the state
     // and there is no deferred use-after-free.
-    let surface_ptr = crate::ghostty::callbacks::SURFACE_PTR.load(Ordering::SeqCst);
+    //
+    // Complete the request on the surface the paste was requested FOR (set by the
+    // paste action handler), falling back to the global last-realized surface.
+    // Using the wrong surface here crashes / pastes into the wrong pane when the
+    // active pane isn't the most recently created one (e.g. after a split).
+    let req_surface =
+        crate::ghostty::callbacks::PASTE_REQUEST_SURFACE.swap(0, Ordering::SeqCst);
+    let surface_ptr = if req_surface != 0 {
+        req_surface
+    } else {
+        crate::ghostty::callbacks::SURFACE_PTR.load(Ordering::SeqCst)
+    };
     if surface_ptr == 0 {
         return false;
     }

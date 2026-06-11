@@ -103,6 +103,11 @@ pub fn register_actions(
             if let Some(engine) = s.active_split_engine() {
                 if let Some(pane_id) = engine.root.find_active_pane_id() {
                     if let Some(surface) = engine.find_surface(pane_id) {
+                        // Tell read_clipboard_cb which surface to complete the
+                        // paste on — the active pane, not the global last-realized
+                        // SURFACE_PTR (which would be a different pane after a split).
+                        crate::ghostty::callbacks::PASTE_REQUEST_SURFACE
+                            .store(surface as usize, std::sync::atomic::Ordering::SeqCst);
                         let action_str = b"paste_from_clipboard";
                         unsafe {
                             crate::ghostty::ffi::ghostty_surface_binding_action(

@@ -25,6 +25,15 @@ pub static APP_PTR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUs
 /// Safety: ghostty_surface_t is opaque void* and only accessed from the GLib main thread.
 pub static SURFACE_PTR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// The surface a paste was requested FOR. The paste action handler stores the
+/// active pane's surface here right before invoking ghostty's paste binding;
+/// read_clipboard_cb consumes it to complete the request on the correct surface
+/// rather than the global last-realized SURFACE_PTR. Without this, pasting into
+/// any pane other than the most-recently-created one completes against the
+/// wrong surface (crash / paste lands in the wrong pane). 0 = unset.
+pub static PASTE_REQUEST_SURFACE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 /// Registry of all live GLArea instances. wakeup_cb iterates this to queue_render all panes.
 /// Stores raw pointers because gtk4::GLArea is not Send/Sync. The pointers are only
 /// dereferenced on the main thread inside glib::idle_add_once closures.
